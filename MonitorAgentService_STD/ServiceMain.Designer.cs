@@ -58,7 +58,7 @@
             // timerlogfile
             // 
             this.timerlogfile.Enabled = true;
-            this.timerlogfile.Interval = 900000D;
+            this.timerlogfile.Interval = 100000D;
             this.timerlogfile.Elapsed += new System.Timers.ElapsedEventHandler(this.timerlogfile_Elapsed);
             // 
             // ServiceMain

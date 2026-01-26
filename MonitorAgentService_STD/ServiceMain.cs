@@ -238,14 +238,27 @@ namespace MonitorAgentService
         //2025/12/10 Benson add for STD +
         private string GetCurrentLogFilename()
         {
+            //make each time in a multiple of 5
+            DateTime now = DateTime.UtcNow;
+
+            // Calculate the remainder (e.g., if minute is 13, 13 % 5 = 3)
+            int remainder = now.Minute % 5;
+
+            // Subtract the remainder to snap to the previous multiple of 5
+            DateTime roundedTime = now.AddMinutes(-remainder);
+
+            string todayDate = roundedTime.ToString("yyyyMMddHHmm");
+            //////////////////////////////////////////
+            
             //check the log exist or not
-            if(!Directory.Exists(logFolderPath))
+            if (!Directory.Exists(logFolderPath))
             {
                 Directory.CreateDirectory(logFolderPath);
-                return $"001_{DateTime.UtcNow.ToString("yyyyMMdd")}.json";
+                //return $"001_{DateTime.UtcNow.ToString("yyyyMMddHHmm")}.json";
+                return $"001_{todayDate}.json";
             }
             
-            string todayDate = DateTime.UtcNow.ToString("yyyyMMdd");
+            //string todayDate = DateTime.UtcNow.ToString("yyyyMMddHHmm");
             //Check today log file exist,if exist keep writing today log
             var files = Directory.GetFiles(logFolderPath, $"*_{todayDate}.json");
             if (files.Length > 0)
@@ -259,28 +272,55 @@ namespace MonitorAgentService
 
             if(allFiles.Length > 0)
             {
-                int maxSeq = 0;
-                foreach (var file in allFiles)
-                {
-                    // spilt the file name
-                    string fName = Path.GetFileName(file);
-                    string[] parts = fName.Split('_'); 
+                DirectoryInfo dirInfo = new DirectoryInfo(logFolderPath);
 
+                // 1. Get all .json files and sort them by 'LastWriteTime' (newest first)
+                // Note: ensure the pattern matches your files (e.g., "*_*.json")
+                FileInfo lastModifiedFile = dirInfo.GetFiles("*_*.json")
+                                                   .OrderByDescending(f => f.LastWriteTime)
+                                                   .FirstOrDefault();
+                if (lastModifiedFile != null)
+                {
+                    // 2. Split the file name of the newest file
+                    string fName = lastModifiedFile.Name;
+                    string[] parts = fName.Split('_');
+                     
                     if (parts.Length > 0)
                     {
-                        int currentSeq;
-                        // turn "001" to 1
-                        if (int.TryParse(parts[0], out currentSeq))
+                        int lastSeq;
+                        // 3. Parse the sequence from the newest file
+                        if (int.TryParse(parts[0], out lastSeq))
                         {
-                            if (currentSeq > maxSeq)
-                            {
-                                maxSeq = currentSeq;
-                            }
+                            // 4. Increment the sequence based on the last modified file
+                            nextSequence = lastSeq + 1;
                         }
                     }
                 }
+                /*  int maxSeq = 0;
+                  foreach (var file in allFiles)
+                  {
+                      // spilt the file name
+                      string fName = Path.GetFileName(file);
+                      string[] parts = fName.Split('_'); 
+
+                      if (parts.Length > 0)
+                      {
+                          int currentSeq;
+                          // turn "001" to 1
+                          if (int.TryParse(parts[0], out currentSeq))
+                          {
+                              if (currentSeq > maxSeq)
+                              {
+                                  maxSeq = currentSeq;
+                              }
+                          }
+                      }
+                  }*/
                 // next = current + 1
-                nextSequence = maxSeq + 1;
+                //nextSequence = maxSeq + 1;
+
+                //The requirement is within 180, including 180.
+                nextSequence = ((nextSequence - 1) % 180) + 1;
             }
             return $"{nextSequence.ToString("D3")}_{todayDate}.json";
         }
@@ -465,11 +505,8 @@ namespace MonitorAgentService
 
             if (!File.Exists(ConfigFile.ConfigFilePath))
             {
-                //MessageBox.Show("Config File Not Found!", "WARNING", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                //Application.Exit雖然UI都關閉了，但還是會執行應用程式後續工作(Application.ExitThread也是)。
-                //Environment.Exit在UI關閉後，不會執行應用程式後續工作，算強制中斷所有工作。
+                MessageBox.Show("Config File Not Found!", "WARNING", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 Environment.Exit(Environment.ExitCode);
-                //正確的退出應用程式，應在Form.Closing事件中循環處理停止每個訊息工作，並在Form.Closed事件中加入Environment.Exit會來的比較保險點。
             }
             else
             {
@@ -510,18 +547,12 @@ namespace MonitorAgentService
                     ConfigFile.DebugMessage("batterystatusCondition", ConfigFile.batterystatusCondition.ToString(), debugEnable);
 
                     ConfigFile.DebugMessage("ssdTemperatureCondition", ConfigFile.ssdTemperatureCondition.ToString(), debugEnable);
-                    ConfigFile.DebugMessage("ssdHealthstatusCondition", ConfigFile.ssdHealthstatusCondition.ToString(), debugEnable);
-
+                    ConfigFile.DebugMessage("ssdHealthstatusCondition", ConfigFile.ssdHealthstatusCondition.ToString(), debugEnable); 
                 }
-                catch (FormatException) //ex
+                catch (Exception ex)
                 {
-                    //MessageBox.Show("Config File Value is NOT Correct!", "WARNING", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    Environment.Exit(Environment.ExitCode); //要授予作業系統的結束代碼。 使用0表示處理序已順利完成。
-                }
-                catch (Exception) //ex
-                {
-                    //MessageBox.Show(ex.Message, "WARNING", MessageBoxButtons.OK, MessageBoxIcon.Exclamation);
-                    Environment.Exit(Environment.ExitCode); //要授予作業系統的結束代碼。 使用0表示處理序已順利完成。
+                    MessageBox.Show(ex.Message, "WARNING", MessageBoxButtons.OK, MessageBoxIcon.Exclamation);
+                    Environment.Exit(Environment.ExitCode); 
                 }
             }
         }
@@ -534,13 +565,9 @@ namespace MonitorAgentService
             {
                 filename = expectedFilname; //Update current filename
 
-                newcpuCount = 0; cpuCount = 0;
-                newcpuusageCount = 0; cpuusageCount = 0;
-                newbatCount = 0; batCount = 0;
-                newssdTempCount = 0; ssdTempCount = 0;
-                newfanspeedCount = 0; fanspeedCount = 0;
+                newcpuCount = cpuCount = newcpuusageCount = cpuusageCount = newbatCount = batCount = newssdTempCount = ssdTempCount = newfanspeedCount = fanspeedCount = 0;
 
-                if(!File.Exists(logFolderPath + filename))
+                if (!File.Exists(logFolderPath + filename))
                 {
                     File.WriteAllText(logFolderPath + filename, "{ }");
                 }
@@ -627,7 +654,6 @@ namespace MonitorAgentService
 
                 { "SSD",new
                     {
-                       
                         vendor = formSSDView.ModelNumber,
                         serial_number = formSSDView.SerialNumber,
                         temperature = FormSSDView.SSDTemperature,
@@ -639,7 +665,6 @@ namespace MonitorAgentService
                         unsafe_shutdowns = FormSSDView.SSDUnsafeShutdowns,
                         media_and_data_integrity_errors = FormSSDView.SSDMediaDataErrors
                     }
-
                 },
 
                 { "MB_RAM",new
