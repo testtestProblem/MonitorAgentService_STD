@@ -6,4 +6,4 @@ How to install
 5. net stop abcd  -> stop
 
 uninstall service  
-sc delete <service-name>
+sc delete \<service-name\>
