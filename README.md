@@ -5,5 +5,5 @@ How to install
 4. net start abcd  -> start
 5. net stop abcd  -> stop
 
-uninstall service
+uninstall service  
 sc delete <service-name>
